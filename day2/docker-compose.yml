@@ -1,0 +1,94 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: superset_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - superset-net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:15
+    container_name: superset_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset_pass
+      POSTGRES_DB: superset
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - superset-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset"]
+      interval: 5s
+      retries: 10
+
+  mysql:
+    image: mysql:8.0
+    container_name: superset_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql_root_pass
+      MYSQL_DATABASE: tpch
+      MYSQL_USER: tpchuser
+      MYSQL_PASSWORD: tpch_pass
+    command: --default-authentication-plugin=mysql_native_password --local-infile=1 --secure-file-priv=/tpch_csv 
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ./tpch_csv:/tpch_csv    # place your TPCH CSVs here on host
+    networks:
+      - superset-net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -pmysql_root_pass"]
+      interval: 5s
+      retries: 10
+
+  superset:
+    build: .
+    #image: apache/superset:latest
+    container_name: superset_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    environment:
+      # We will point Superset to Postgres metadata DB via config file (mounted below)
+      SUPERSET_SECRET_KEY: "superset_secret_please_change"
+      # optional (but convenient) expose python path to superset_config.py
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./superset_config.py:/app/superset_config.py:ro
+    ports:
+      - "8088:8088"
+    networks:
+      - superset-net
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        # initialize only if not initialized
+        superset db upgrade
+        superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin
+        superset init
+        gunicorn -w 5 -k gevent "superset.app:create_app()" -b  0.0.0.0:8088
+
+volumes:
+  pgdata:
+  mysqldata:
+  redisdata:
+networks:
+  superset-net:
+    driver: bridge
