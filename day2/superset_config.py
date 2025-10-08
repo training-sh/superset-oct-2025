@@ -48,10 +48,29 @@ RESULTS_BACKEND = RedisCache(
 # Celery broker/result backend (defined but workers optional)
 # ---------------------------
 # You can leave these here; without workers tasks won't be processed.
+from celery.schedules import crontab
+
 CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/2"
+
+class CeleryConfig:
+    broker_url = CELERY_BROKER_URL
+    result_backend = CELERY_RESULT_BACKEND
+    timezone = "UTC"
+
+CELERY_CONFIG = CeleryConfig
 
 # ---------------------------
 # Keep secret key consistent
 # ---------------------------
 SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "please-change-me")
+
+
+FEATURE_FLAGS = {"DASHBOARD_FILTERS_EXPERIMENTAL": True, "DASHBOARD_NATIVE_FILTERS_SET": True, "DASHBOARD_NATIVE_FILTERS": True, "DASHBOARD_CROSS_FILTERS": True, "ENABLE_TEMPLATE_PROCESSING": True}
+
+# Task soft/hard time limits (in seconds)
+CELERY_TASK_SOFT_TIME_LIMIT = 600    # soft limit (task can cleanup)
+CELERY_TASK_TIME_LIMIT = 700         # hard limit (force kill)
+
+# Optional: reduce concurrency to avoid resource exhaustion
+CELERY_WORKER_CONCURRENCY = 8
