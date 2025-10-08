@@ -83,8 +83,31 @@ services:
         superset db upgrade
         superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin
         superset init
-        gunicorn -w 5 -k gevent "superset.app:create_app()" -b  0.0.0.0:8088
+        # gunicorn -w 5 -k gevent "superset.app:create_app()" -b  0.0.0.0:8088
+        gunicorn -w 2 -k gevent --timeout 300 --graceful-timeout 60 --max-requests 1000 --max-requests-jitter 200 "superset.app:create_app()" -b 0.0.0.0:8088
 
+  celery_worker:
+    #image: your-superset-image-or-built-image  # same image as superset_app build
+    build: .
+    container_name: superset_celery_worker
+    depends_on:
+      - redis
+      - postgres
+      - mysql
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # ensure same env as superset so config is consistent
+    volumes:
+      - ./superset_config.py:/app/superset_config.py:ro
+    command: >
+      /bin/sh -c "celery --app=superset.tasks.celery_app:app worker
+      --pool=prefork -O fair -c 4 --loglevel=INFO"
+    networks:
+      - superset-net
+    restart: unless-stopped
+ 
 volumes:
   pgdata:
   mysqldata:
